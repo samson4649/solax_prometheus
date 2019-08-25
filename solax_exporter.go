@@ -198,50 +198,51 @@ func updateMetrics(){
       
       if err != nil {
        fmt.Println( "connecting to host " + url + err.Error() )
-      }
-      
-      defer resp.Body.Close()
-      
-      html, err := ioutil.ReadAll(resp.Body)
-      if err == nil {
-
-        re := regexp.MustCompile(`,,`)
-        tmp := re.ReplaceAllLiteralString( string(html), ",0,")
-        r_data := re.ReplaceAllLiteralString( tmp, ",0," )
-        
-        solarData := SolarData{}
-        if err := json.Unmarshal([]byte(r_data), &solarData); err != nil {
-          fmt.Println(err.Error())
-        }
-
-        if len(solarData.Data) == 68 {
-          m_pv_current.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[0] )
-          m_pv_current.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[1] )
-          m_pv_voltage.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[2] )
-          m_pv_voltage.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[3] )
-          m_pv_input_power.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[11] )
-          m_pv_input_power.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[12] )
-          m_grid_output_current.Set( solarData.Data[4] )
-          m_grid_network_voltage.Set( solarData.Data[5] )
-          m_grid_power.Set( solarData.Data[6] )
-          m_grid_feed_power.Set( solarData.Data[10] )
-          m_grid_frequency.Set( solarData.Data[50] )
-          m_grid_exported.Set( solarData.Data[41] )
-          m_grid_imported.Set( solarData.Data[42] )
-          m_battery_voltage.Set( solarData.Data[13] )
-          m_charge_discharge_current.Set( solarData.Data[14] )
-          m_battery_power.Set( solarData.Data[15] )
-          m_battery_temp.Set( solarData.Data[16] )
-          m_remaining_cap.Set( solarData.Data[17] )
-          m_inverter_yeild_today.Set( solarData.Data[8] )
-          m_inverter_yeild_month.Set( solarData.Data[9] )
-          m_battery_yeild_total.Set( solarData.Data[19] )
-        } else {
-          fmt.Println("data in json at bad length")
-        }
-
       } else {
-       fmt.Println( "HTML response parse error: " + err.Error() )
+      
+        defer resp.Body.Close()
+        
+        html, err := ioutil.ReadAll(resp.Body)
+        if err == nil {
+
+          re := regexp.MustCompile(`,,`)
+          tmp := re.ReplaceAllLiteralString( string(html), ",0,")
+          r_data := re.ReplaceAllLiteralString( tmp, ",0," )
+          
+          solarData := SolarData{}
+          if err := json.Unmarshal([]byte(r_data), &solarData); err != nil {
+            fmt.Println(err.Error())
+          }
+
+          if len(solarData.Data) == 68 {
+            m_pv_current.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[0] )
+            m_pv_current.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[1] )
+            m_pv_voltage.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[2] )
+            m_pv_voltage.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[3] )
+            m_pv_input_power.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[11] )
+            m_pv_input_power.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[12] )
+            m_grid_output_current.Set( solarData.Data[4] )
+            m_grid_network_voltage.Set( solarData.Data[5] )
+            m_grid_power.Set( solarData.Data[6] )
+            m_grid_feed_power.Set( solarData.Data[10] )
+            m_grid_frequency.Set( solarData.Data[50] )
+            m_grid_exported.Set( solarData.Data[41] )
+            m_grid_imported.Set( solarData.Data[42] )
+            m_battery_voltage.Set( solarData.Data[13] )
+            m_charge_discharge_current.Set( solarData.Data[14] )
+            m_battery_power.Set( solarData.Data[15] )
+            m_battery_temp.Set( solarData.Data[16] )
+            m_remaining_cap.Set( solarData.Data[17] )
+            m_inverter_yeild_today.Set( solarData.Data[8] )
+            m_inverter_yeild_month.Set( solarData.Data[9] )
+            m_battery_yeild_total.Set( solarData.Data[19] )
+          } else {
+            fmt.Println("data in json at bad length")
+          }
+
+        } else {
+         fmt.Println( "HTML response parse error: " + err.Error() )
+        }
       }
 
       // sleep to prevent over polling
