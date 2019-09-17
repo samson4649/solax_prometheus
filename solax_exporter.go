@@ -3,13 +3,19 @@ package main
 import (
   "net/http"
   "io/ioutil"
-  "fmt"
+  // "fmt"
   "encoding/json"
   "time"
   "regexp"
+
+  "go.uber.org/zap"
   "github.com/prometheus/client_golang/prometheus"
-  //"github.com/prometheus/client_golang/prometheus/promauto"
   "github.com/prometheus/client_golang/prometheus/promhttp"
+
+  "gitlab.monarch-ares.com/go-includes/golog"
+
+  "github.com/alexflint/go-arg"
+
 )
 
 //  metricNames[0]  = "pv_pv1_current"
@@ -34,10 +40,60 @@ import (
 //  metricNames[9]  = "interter_yeild_month"
 //  metricNames[19] = "battery_yeild_total"
 
-var (
+type Domain struct {
+  Version         string
+  ScrapeErrCount  int
+  Registry        *prometheus.Registry
+  Metrics         Metrics
+}
+
+type Metrics struct {
+  IsRegistered          bool
+  PVCurrent             prometheus.GaugeVec 
+  PVVoltage             prometheus.GaugeVec
+  PVPower               prometheus.GaugeVec
+  GridOutputCurrent     prometheus.Gauge
+  GridNetworkVoltage    prometheus.Gauge
+  GridPower             prometheus.Gauge
+  GridFeedPower         prometheus.Gauge
+  GridFrequency         prometheus.Gauge
+  GridExported          prometheus.Gauge
+  GridImported          prometheus.Gauge
+  BatteryVoltage        prometheus.Gauge
+  BatteryCurrent        prometheus.Gauge
+  BatteryPower          prometheus.Gauge
+  BatteryTemp           prometheus.Gauge
+  BatteryCap            prometheus.Gauge
+  InvertDaily           prometheus.Gauge 
+  InvertMonthly         prometheus.Gauge
+  InvertYearly          prometheus.Gauge
+  CoreScrapeFailCount   prometheus.Counter
+}
+
+var args struct {
+  Port        string  `arg:"-p" help:"Port to listen on localhost (default :4444)"`
+  IP          string  `help:"Interface to listen on (default: 0.0.0.0)"`
+  Verbose     bool    `arg:"-v" help:"Provide information on the actions running"`
+  Silent      bool    `arg:"-q" help:"Dont log anything - just use return code (for piping)"`
+  Endpoint    string  `arg:"-t" help:"Solax Endpoint target" (default: http://11.11.11.1/api/realTimeData.htm)"`
+}
+
+// var core Metrics
+var root Domain
+
+var target = "http://11.11.11.1/api/realTimeData.htm"
+// var target = "http://api:2015/realTimeData.htm"
+
+// logger
+var logger *zap.Logger
+
+func (d *Domain) initMetrics() (bool) {
+
+  core := &d.Metrics
+
   //  metricNames[0]  = "pv_pv1_current"
   //  metricNames[1]  = "pv_pv2_current"
-  m_pv_current = prometheus.NewGaugeVec( prometheus.GaugeOpts{
+  core.PVCurrent = *prometheus.NewGaugeVec( prometheus.GaugeOpts{
     Name: "solax_pv_current",
     Help: "PV current now",
     },
@@ -46,7 +102,7 @@ var (
   
   //  metricNames[2]  = "pv_pv1_voltage"
   //  metricNames[3]  = "pv_pv2_voltage"
-  m_pv_voltage = prometheus.NewGaugeVec( prometheus.GaugeOpts{
+  core.PVVoltage = *prometheus.NewGaugeVec( prometheus.GaugeOpts{
     Name: "solax_pv_voltage",
     Help: "PV voltage now",
     },
@@ -55,7 +111,7 @@ var (
 
   //  metricNames[11] = "pv_pv1_input_power"
   //  metricNames[12] = "pv_pv2_input_power"
-  m_pv_input_power = prometheus.NewGaugeVec( prometheus.GaugeOpts{
+  core.PVPower = *prometheus.NewGaugeVec( prometheus.GaugeOpts{
     Name: "solax_pv_input_power",
     Help: "PV input power now",
     },
@@ -63,95 +119,100 @@ var (
   )
 
   //  metricNames[4]  = "grid_output_current"
-  m_grid_output_current = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridOutputCurrent = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_grid_output_current",
     Help: "Grid Output Current",
   })
 
   //  metricNames[5]  = "grid_network_voltage"
-  m_grid_network_voltage = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridNetworkVoltage = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_grid_network_voltage",
     Help: "Grid Network Voltage",
   })
 
   //  metricNames[6]  = "grid_power"
-  m_grid_power = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridPower = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_grid_power",
     Help: "Grid Power",
   })
 
   //  metricNames[10] = "grid_feed_power"
-  m_grid_feed_power = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridFeedPower = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_grid_feed_power",
     Help: "Grid Feed Power",
   })
 
   //  metricNames[41] = "grid_frequency"
-  m_grid_frequency = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridFrequency = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_grid_frequency",
     Help: "Grid Frequency",
   })
 
   //  metricNames[42] = "grid_exported"
-  m_grid_exported = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridExported = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_exported",
     Help: "Grid Exported",
   })
 
   //  metricNames[50] = "grid_imported"
-  m_grid_imported = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.GridImported = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_grid_imported",
     Help: "Grid Imported",
   })
 
   //  metricNames[13] = "battery_voltage"
-  m_battery_voltage = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.BatteryVoltage = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_battery_voltage",
     Help: "Battery Voltage",
   })
 
   //  metricNames[14] = "dis_charge_current"
-  m_charge_discharge_current = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.BatteryCurrent = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_charge_discharge_current",
     Help: "Current Charge / Discharge",
   })
 
   //  metricNames[15] = "battery_power"
-  m_battery_power = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.BatteryPower = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_battery_power",
     Help: "Battery Power",
   })
 
   //  metricNames[16] = "battery_temperature"
-  m_battery_temp = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.BatteryTemp = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_battery_temp",
     Help: "Battert Temp",
   })
 
   //  metricNames[17] = "remaining_capacity"
-  m_remaining_cap = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.BatteryCap = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_remaining_capacity",
     Help: "Remaining capacity of system",
   })
   //  metricNames[8]  = "inverter_yeild_today"
-  m_inverter_yeild_today = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.InvertDaily = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_inverter_yeild_today",
     Help: "Inverter Yeild Today",
   })
 
   //  metricNames[9]  = "inverter_yeild_month"
-  m_inverter_yeild_month = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.InvertMonthly = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_inverter_yeild_month",
     Help: "Inverter Yeild for the Month",
   })
 
   //  metricNames[19] = "battery_yeild_total"
-  m_battery_yeild_total = prometheus.NewGauge( prometheus.GaugeOpts{
+  core.InvertYearly = prometheus.NewGauge( prometheus.GaugeOpts{
     Name: "solax_battery_yeild_total",
     Help: "Inverter Battery Yeild Total",
   })
 
-)
+  core.CoreScrapeFailCount = prometheus.NewCounter( prometheus.CounterOpts{
+    Name: "solax_scrape_error",
+    Help: "Count of errors from backend scraping",
+  })
+  return true
+}
 
 type SolarData struct {
   Method string     `json:"method"`
@@ -162,86 +223,163 @@ type SolarData struct {
   Data []float64    `json:"Data"`
 }
 
-func init(){
-  // metrics have to be registered to be exposed
-  prometheus.MustRegister( m_pv_current )
-  prometheus.MustRegister( m_pv_voltage )
-  prometheus.MustRegister( m_pv_input_power )
-  prometheus.MustRegister( m_grid_output_current )
-  prometheus.MustRegister( m_grid_network_voltage )
-  prometheus.MustRegister( m_grid_power )
-  prometheus.MustRegister( m_grid_feed_power )
-  prometheus.MustRegister( m_grid_frequency )
-  prometheus.MustRegister( m_grid_exported )
-  prometheus.MustRegister( m_grid_imported )
-  prometheus.MustRegister( m_battery_voltage )
-  prometheus.MustRegister( m_charge_discharge_current )
-  prometheus.MustRegister( m_battery_power )
-  prometheus.MustRegister( m_battery_temp )
-  prometheus.MustRegister( m_remaining_cap )
-  prometheus.MustRegister( m_inverter_yeild_today )
-  prometheus.MustRegister( m_inverter_yeild_month )
-  prometheus.MustRegister( m_battery_yeild_total )
+func (d *Domain) registerCoreMetrics(){
+  d.Registry.MustRegister( d.Metrics.CoreScrapeFailCount )
 }
 
-func updateMetrics(){
+func (d *Domain) registerSolaxMetrics() {
+  // metrics have to be registered to be exposed
+  d.Registry.Register( d.Metrics.PVCurrent )
+  d.Registry.Register( d.Metrics.PVVoltage )
+  d.Registry.Register( d.Metrics.PVPower )
+  d.Registry.Register( d.Metrics.GridOutputCurrent )
+  d.Registry.Register( d.Metrics.GridNetworkVoltage )
+  d.Registry.Register( d.Metrics.GridPower )
+  d.Registry.Register( d.Metrics.GridFeedPower )
+  d.Registry.Register( d.Metrics.GridFrequency )
+  d.Registry.Register( d.Metrics.GridExported )
+  d.Registry.Register( d.Metrics.GridImported )
+  d.Registry.Register( d.Metrics.BatteryVoltage )
+  d.Registry.Register( d.Metrics.BatteryCurrent )
+  d.Registry.Register( d.Metrics.BatteryPower )
+  d.Registry.Register( d.Metrics.BatteryTemp )
+  d.Registry.Register( d.Metrics.BatteryCap )
+  d.Registry.Register( d.Metrics.InvertDaily )
+  d.Registry.Register( d.Metrics.InvertMonthly )
+  d.Registry.Register( d.Metrics.InvertYearly )
+}
+
+func (d *Domain) unRegisterSolaxMetrics(){
+  core := &d.Metrics
+  // metrics unregistered when missing data
+  d.Registry.Unregister( core.PVCurrent )
+  d.Registry.Unregister( core.PVVoltage )
+  d.Registry.Unregister( core.PVPower )
+  d.Registry.Unregister( core.GridOutputCurrent )
+  d.Registry.Unregister( core.GridNetworkVoltage )
+  d.Registry.Unregister( core.GridPower )
+  d.Registry.Unregister( core.GridFeedPower )
+  d.Registry.Unregister( core.GridFrequency )
+  d.Registry.Unregister( core.GridExported )
+  d.Registry.Unregister( core.GridImported )
+  d.Registry.Unregister( core.BatteryVoltage )
+  d.Registry.Unregister( core.BatteryCurrent )
+  d.Registry.Unregister( core.BatteryPower )
+  d.Registry.Unregister( core.BatteryTemp )
+  d.Registry.Unregister( core.BatteryCap )
+  d.Registry.Unregister( core.InvertDaily )
+  d.Registry.Unregister( core.InvertMonthly )
+  d.Registry.Unregister( core.InvertYearly )
+  // d.Registry.Unregister( d.Metrics.CoreScrapeFails )
+}
+
+func (d *Domain) registerIfNotAlready() {
+  if ! d.Metrics.IsRegistered {
+    d.registerSolaxMetrics()
+    d.Metrics.IsRegistered = false
+  }
+}
+
+func (d *Domain) unregisterIfAlready() {
+  if d.Metrics.IsRegistered {
+    d.unRegisterSolaxMetrics()
+    d.Metrics.IsRegistered = true
+  }
+}
+
+func (d *Domain) Run(){
   go func(){
-    fmt.Println("Metric Parser Started...")
+    logger.Info("Metrics Spider Started.")
     for {
       
       //example data
       // r_data := string( `{"method":"uploadsn","version":"Solax_SI_CH_2nd_20160912_DE02","type":"AL_SE","SN":"829E4BBD","Data":[0.0,0.0,0.0,0.0,4.0,240.0,937,38,21.6,9162.7,-748,0,0,53.18,-19.71,-1050,19,67,0.0,3482.1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00,0.00,0,0,0,0,0,0,0,49.96,0,0,0.0,0.0,0,0.00,0,0,0,0.00,0,8,0,0,0.00,0,8],"Status":"2"}` )
 
       client := &http.Client{}
-      url := "http://11.11.11.1/api/realTimeData.htm"
+      // url := target
+      // url := "http://api-fault"
+      url := args.Endpoint
       resp,err := client.Get(url)
       
       if err != nil {
-       fmt.Println( "connecting to host " + url + err.Error() )
+        logger.Warn("Not able to connect to host",
+          zap.String( "url", url ),
+        )
+        d.unRegisterSolaxMetrics()
+        d.Metrics.CoreScrapeFailCount.Inc()
+        // fmt.Println( "connecting to host " + url + err.Error() )
       } else {
       
         defer resp.Body.Close()
-        
-        html, err := ioutil.ReadAll(resp.Body)
-        if err == nil {
 
-          re := regexp.MustCompile(`,,`)
-          tmp := re.ReplaceAllLiteralString( string(html), ",0,")
-          r_data := re.ReplaceAllLiteralString( tmp, ",0," )
-          
-          solarData := SolarData{}
-          if err := json.Unmarshal([]byte(r_data), &solarData); err != nil {
-            fmt.Println(err.Error())
-          }
-
-          if len(solarData.Data) == 68 {
-            m_pv_current.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[0] )
-            m_pv_current.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[1] )
-            m_pv_voltage.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[2] )
-            m_pv_voltage.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[3] )
-            m_pv_input_power.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[11] )
-            m_pv_input_power.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[12] )
-            m_grid_output_current.Set( solarData.Data[4] )
-            m_grid_network_voltage.Set( solarData.Data[5] )
-            m_grid_power.Set( solarData.Data[6] )
-            m_grid_feed_power.Set( solarData.Data[10] )
-            m_grid_frequency.Set( solarData.Data[50] )
-            m_grid_exported.Set( solarData.Data[41] )
-            m_grid_imported.Set( solarData.Data[42] )
-            m_battery_voltage.Set( solarData.Data[13] )
-            m_charge_discharge_current.Set( solarData.Data[14] )
-            m_battery_power.Set( solarData.Data[15] )
-            m_battery_temp.Set( solarData.Data[16] )
-            m_remaining_cap.Set( solarData.Data[17] )
-            m_inverter_yeild_today.Set( solarData.Data[8] )
-            m_inverter_yeild_month.Set( solarData.Data[9] )
-            m_battery_yeild_total.Set( solarData.Data[19] )
-          } else {
-            fmt.Println("data in json at bad length")
-          }
-
+        if resp.StatusCode < 200 || resp.StatusCode > 299 {
+        // if true {
+          d.unRegisterSolaxMetrics()
+          d.Metrics.CoreScrapeFailCount.Inc()
+          logger.Warn("Not a valid response from server",
+            zap.String( "url", url ),
+            zap.Int( "statusCode", resp.StatusCode ),
+            zap.String( "statusCodeString", http.StatusText(resp.StatusCode) ),
+          )
         } else {
-         fmt.Println( "HTML response parse error: " + err.Error() )
+        
+          html, err := ioutil.ReadAll(resp.Body)
+          if err == nil {
+
+            re := regexp.MustCompile(`,,`)
+            tmp := re.ReplaceAllLiteralString( string(html), ",0,")
+            r_data := re.ReplaceAllLiteralString( tmp, ",0," )
+            
+            solarData := SolarData{}
+            if err := json.Unmarshal([]byte(r_data), &solarData); err != nil {
+              d.unRegisterSolaxMetrics()
+              d.Metrics.CoreScrapeFailCount.Inc()
+              logger.Warn("Not able to Unmarshal JSON data",
+                zap.String("unmarshal_err", err.Error() ),
+              )
+            } else {
+
+              if len(solarData.Data) == 68 {
+                logger.Info("step")
+                d.registerIfNotAlready()
+                logger.Info("step_2")
+                d.Metrics.PVCurrent.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[0] )
+                d.Metrics.PVCurrent.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[1] )
+                d.Metrics.PVVoltage.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[2] )
+                d.Metrics.PVVoltage.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[3] )
+                d.Metrics.PVPower.With( prometheus.Labels{"pv":"1"}).Set( solarData.Data[11] )
+                d.Metrics.PVPower.With( prometheus.Labels{"pv":"2"}).Set( solarData.Data[12] )
+                d.Metrics.GridOutputCurrent.Set( solarData.Data[4] )
+                d.Metrics.GridNetworkVoltage.Set( solarData.Data[5] )
+                d.Metrics.GridPower.Set( solarData.Data[6] )
+                d.Metrics.GridFeedPower.Set( solarData.Data[10] )
+                d.Metrics.GridFrequency.Set( solarData.Data[50] )
+                d.Metrics.GridExported.Set( solarData.Data[41] )
+                d.Metrics.GridImported.Set( solarData.Data[42] )
+                d.Metrics.BatteryVoltage.Set( solarData.Data[13] )
+                d.Metrics.BatteryCurrent.Set( solarData.Data[14] )
+                d.Metrics.BatteryPower.Set( solarData.Data[15] )
+                d.Metrics.BatteryTemp.Set( solarData.Data[16] )
+                d.Metrics.BatteryCap.Set( solarData.Data[17] )
+                d.Metrics.InvertDaily.Set( solarData.Data[8] )
+                d.Metrics.InvertMonthly.Set( solarData.Data[9] )
+                d.Metrics.InvertYearly.Set( solarData.Data[19] )
+              } else {
+                logger.Warn("Unmarshalled data at bad length. Aborting.",
+                  zap.Int("unmarshal_len", len(solarData.Data) ),
+                )
+                d.unRegisterSolaxMetrics()
+                d.Metrics.CoreScrapeFailCount.Inc()
+              }
+            }
+
+          } else {
+            d.unRegisterSolaxMetrics()
+            d.Metrics.CoreScrapeFailCount.Inc()
+            logger.Warn("HTML response parse error",
+              zap.String("err", err.Error() ),
+            )
+          }
         }
       }
 
@@ -251,11 +389,44 @@ func updateMetrics(){
   }()
 }
 
+func Initialise() ( *Domain ){
+  d := Domain{
+    Version: "0.0.1",
+    Registry: prometheus.NewRegistry(),
+  }
+  d.initMetrics()
+  d.registerCoreMetrics()
+
+  return &d
+}
+
 func main() {
-  updateMetrics()
-  fmt.Println("Serving metrics on 0.0.0.0:4444/metrics")
-  http.Handle("/metrics", promhttp.Handler() )
-  http.ListenAndServe(":4444",nil)
+
+  // application argument defaults and parse
+  args.Port     = "4444"
+  args.IP       = "0.0.0.0"
+  args.Endpoint = "http://11.11.11.1/api/realTimeData.htm"
+  arg.MustParse(&args)
+
+  // logger construction
+  logger = golog.New("xen-safe", golog.LogLevelDetermine( args.Silent, args.Verbose ) )
+
+  logger.Warn("Listening on " + args.IP +":"+ string(args.Port) )
+
+  solax := Initialise()
+  solax.registerIfNotAlready()
+  solax.Run()
+
+  logger.Info("Serving metrics on 0.0.0.0:4444/metrics")
+
+  handler := promhttp.HandlerFor( solax.Registry, promhttp.HandlerOpts{} )
+  http.Handle("/metrics", handler )
+
+  serveString := args.IP + ":" + args.Port
+  err := http.ListenAndServe( serveString , nil )
+  if err != nil {
+    logger.Fatal(err.Error() )
+  }
 }
 
 
