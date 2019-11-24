@@ -1,7 +1,16 @@
 # Prometheus Metric Exporter for Solax Solar Systems
 
-## Introduction
-I wanted to attempt to build a go application and had a solar system that was exposing metrics via an API on a closed network. This application is designed to run on the closed wifi network (from a raspberry pi in this case) and expose prometheus metrics on the internal LAN on port 4444
+# Description
+Read Solax Inverter real-time API and exposes as Prometheus metric endpoint.
+
+Real time: 
+- Power
+- Current
+- Voltage
+- Grid power data
+- Battery data
+- Health data
+- Daily/Total energy summaries
 
 ## Building
 	# Native
@@ -15,8 +24,6 @@ I wanted to attempt to build a go application and had a solar system that was ex
 The application assumes a network connection to the Solax wifi network and connects to it at 11.11.11.1 on URI /api/realTimeData.htm returning a json object. 
 
 This json object is then parsed according to the exports below (thanks GitHobi) and update the metrics accordingly.
-
-This loop is in a go routine and has a sleep timer of 10s between runs.  
 
 ## What this exports
 
