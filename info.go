@@ -1,0 +1,25 @@
+package solax_prometheus
+
+// Below is API Data array relative information
+
+//  metricNames[0]  = "pv_pv1_current"
+//  metricNames[1]  = "pv_pv2_current"
+//  metricNames[2]  = "pv_pv1_voltage"
+//  metricNames[3]  = "pv_pv2_voltage"
+//  metricNames[11] = "pv_pv1_input_power"
+//  metricNames[12] = "pv_pv2_input_power"
+//  metricNames[4]  = "grid_output_current"
+//  metricNames[5]  = "grid_network_voltage"
+//  metricNames[6]  = "grid_power"
+//  metricNames[10] = "grid_feed_power"
+//  metricNames[41] = "grid_frequency"
+//  metricNames[42] = "grid_exported"
+//  metricNames[50] = "grid_imported"
+//  metricNames[13] = "battery_voltage"
+//  metricNames[14] = "dis_charge_current"
+//  metricNames[15] = "battery_power"
+//  metricNames[16] = "battery_temperature"
+//  metricNames[17] = "remaining_capacity"
+//  metricNames[8]  = "interter_yeild_today"
+//  metricNames[9]  = "interter_yeild_month"
+//  metricNames[19] = "battery_yeild_total"
